@@ -1,0 +1,68 @@
+name: Deploy (Docker Compose local build)
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Sube los archivos del repo al servidor (excluye .git y tu .env)
+      - name: Upload project to server
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          source: |
+            .
+            !.git/
+            !.github/
+            !.env
+          target: ${{ secrets.DEPLOY_PATH }}
+
+      # Ejecuta docker compose con build local y reinicio del servicio
+      - name: Build & Up via Docker Compose (local)
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          COMPOSE_PROJECT_NAME: taxi_dashboard
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_KEY }}
+          port: ${{ secrets.DEPLOY_PORT || 22 }}
+          script_stop: true
+          script: |
+            set -e
+            cd "${{ secrets.DEPLOY_PATH }}"
+
+            # Asegura docker compose (v2) o fallback a docker-compose (v1)
+            if docker compose version >/dev/null 2>&1; then
+              DC="docker compose"
+            elif command -v docker-compose >/dev/null 2>&1; then
+              DC="docker-compose"
+            else
+              echo "Docker Compose no encontrado. Instálalo y vuelve a ejecutar." >&2
+              exit 1
+            fi
+
+            # Opcional: limpia contenedor previo si cambió el nombre
+            $DC down --remove-orphans || true
+
+            # Construye localmente y levanta en segundo plano
+            $DC up -d --build
+
+            # Muestra estado
+            $DC ps
+            docker logs --tail 50 taxi_dashboard || true
