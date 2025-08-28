@@ -1,4 +1,4 @@
-name: Deploy (Self-hosted + DB prod secrets)
+name: Deploy (Self-hosted + docker-compose + prod env)
 
 on:
   push:
@@ -12,26 +12,23 @@ concurrency:
 jobs:
   deploy:
     runs-on: self-hosted
-    environment: prod   # 👈 usa los secrets del environment "prod"
+    environment: prod
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Create .env with DB secrets (prod)
+      - name: Create .env from prod secrets
         shell: bash
         run: |
           set -euo pipefail
-          ENV_PATH=".env"
-
-          cat > "$ENV_PATH" <<EOF
-DB_HOST=${{ secrets.DB_HOST }}
-DB_NAME=${{ secrets.DB_NAME }}
-DB_USER=${{ secrets.DB_USER }}
-DB_PASS=${{ secrets.DB_PASS }}
-EOF
-
-          chmod 600 "$ENV_PATH"
+          {
+            echo "DB_HOST=${{ secrets.DB_HOST }}";
+            echo "DB_NAME=${{ secrets.DB_NAME }}";
+            echo "DB_USER=${{ secrets.DB_USER }}";
+            echo "DB_PASS=${{ secrets.DB_PASS }}";
+          } > .env
+          chmod 600 .env
 
       - name: Build & Up with docker-compose
         shell: bash
